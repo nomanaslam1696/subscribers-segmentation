@@ -1,0 +1,183 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Subscriber {
+  id                      String    @id @default(uuid())
+  store_id                String
+  platform_id             String?   @db.VarChar(255)
+  first_name              String?   @db.VarChar(100)
+  last_name               String?   @db.VarChar(100)
+  email                   String?   @db.VarChar(255)
+  push_subscription_token Json?     @db.JsonB
+  phone                   String?   @db.VarChar(50)
+  country                 String?   @db.VarChar(100)
+  state                   String?   @db.VarChar(100)
+  city                    String?   @db.VarChar(100)
+  zip_code                String?   @db.VarChar(20)
+  ip_address              String?   @db.Inet
+  order_count             Int       @default(0)
+  total_spend             Decimal   @default(0) @db.Decimal(12, 2)
+  last_order_value        Decimal   @default(0) @db.Decimal(12, 2)
+  last_order_date         DateTime? @db.Timestamptz(6)
+  first_order_date        DateTime? @db.Timestamptz(6)
+  average_order_value     Decimal   @default(0) @db.Decimal(10, 2)
+  days_since_last_order   Int?
+  custom_fields           Json?     @db.JsonB
+  tags                    String[]
+  is_email_optin          Boolean   @default(false)
+  is_push_optin           Boolean   @default(false)
+  is_sms_optin            Boolean   @default(false)
+  is_active               Boolean   @default(true)
+  unsubscribed_at         DateTime? @db.Timestamptz(6)
+  last_seen_at            DateTime? @db.Timestamptz(6)
+  time_zone               String?   @db.VarChar(50)
+  preferred_language      String?   @db.VarChar(10)
+  lifecycle_stage         String?   @db.VarChar(50) // prospect, customer, vip, churned
+  customer_tier           String?   @db.VarChar(50) // bronze, silver, gold, platinum
+  created_at              DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime  @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  segments             SegmentSubscriber[]
+  SubscriberEngagement SubscriberEngagement[]
+
+  // Constraints
+  @@unique([store_id, email])
+  @@unique([store_id, phone])
+  // Performance indexes
+  @@index([store_id])
+  @@index([store_id, is_active])
+  @@index([store_id, created_at])
+  @@index([store_id, updated_at])
+  @@index([store_id, last_order_date])
+  @@index([store_id, total_spend])
+  @@index([store_id, order_count])
+  @@index([store_id, is_email_optin])
+  @@index([store_id, is_push_optin])
+  @@index([store_id, is_sms_optin])
+  @@index([store_id, lifecycle_stage])
+  @@index([store_id, customer_tier])
+  @@index([store_id, country])
+  @@index([store_id, state])
+  @@index([store_id, city])
+  // Composite indexes for common queries
+  @@index([store_id, is_active, total_spend])
+  @@index([store_id, is_active, order_count])
+  @@index([store_id, is_active, last_order_date])
+  @@index([store_id, is_email_optin, is_active])
+  @@index([store_id, is_push_optin, is_active])
+  @@index([store_id, lifecycle_stage, is_active])
+  @@index([store_id, customer_tier, total_spend])
+  @@index([store_id, country, state, city])
+  // Full-text search index on names and email
+  @@index([store_id, first_name, last_name])
+  // Tags array index for PostgreSQL GIN
+  @@index([tags], type: Gin)
+  @@map("subscriber")
+}
+
+model Segment {
+  id                   String    @id @default(uuid())
+  store_id             String
+  name                 String    @db.VarChar(255)
+  description          String?   @db.Text
+  is_default           Boolean   @default(false)
+  is_dynamic           Boolean   @default(false)
+  subscriber_count     BigInt    @default(0)
+  estimated_count      BigInt? // For large segments
+  query                String?   @db.Text
+  conditions           Json?     @db.JsonB
+  last_synced_at       DateTime? @db.Timestamptz(6)
+  sync_frequency_hours Int       @default(24)
+  is_active            Boolean   @default(true)
+  created_by_user_id   String?
+  tags                 String[]
+  created_at           DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime  @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  subscribers SegmentSubscriber[]
+
+  // Performance indexes
+  @@index([store_id])
+  @@index([store_id, is_active])
+  @@index([store_id, is_default])
+  @@index([store_id, is_dynamic])
+  @@index([store_id, last_synced_at])
+  @@index([store_id, created_at])
+  @@index([store_id, subscriber_count])
+  // Tags array index
+  @@index([tags], type: Gin)
+  // Full-text search on name and description
+  @@index([store_id, name])
+  @@map("segment")
+}
+
+model SegmentSubscriber {
+  id            String   @id @default(uuid())
+  segment_id    String
+  subscriber_id String
+  added_at      DateTime @default(now()) @db.Timestamptz(6)
+  is_active     Boolean  @default(true)
+  score         Decimal? @db.Decimal(5, 2) // Relevance score for subscriber in segment
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  segment    Segment    @relation(fields: [segment_id], references: [id], onDelete: Cascade)
+  subscriber Subscriber @relation(fields: [subscriber_id], references: [id], onDelete: Cascade)
+
+  // Performance indexes
+  @@unique([segment_id, subscriber_id])
+  @@index([segment_id])
+  @@index([subscriber_id])
+  @@index([segment_id, is_active])
+  @@index([segment_id, added_at])
+  @@index([segment_id, score])
+  @@index([subscriber_id, is_active])
+  // Composite indexes for common queries
+  @@index([segment_id, is_active, score])
+  @@index([subscriber_id, is_active, added_at])
+  @@map("segment_subscriber")
+}
+
+model SubscriberEngagement {
+  id                   String    @id @default(uuid())
+  subscriber_id        String
+  store_id             String
+  channel              String    @db.VarChar(20) // email, push, sms
+  total_sent           Int       @default(0)
+  total_delivered      Int       @default(0)
+  total_opened         Int       @default(0)
+  total_clicked        Int       @default(0)
+  total_converted      Int       @default(0)
+  last_engagement_date DateTime? @db.Timestamptz(6)
+  engagement_score     Decimal   @default(0) @db.Decimal(5, 2)
+  preferred_send_hour  Int? // 0-23
+  preferred_send_day   Int? // 0-6 (Sunday = 0)
+  created_at           DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime  @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  subscriber Subscriber @relation(fields: [subscriber_id], references: [id], onDelete: Cascade)
+
+  @@unique([subscriber_id, store_id, channel])
+  @@index([store_id])
+  @@index([subscriber_id])
+  @@index([store_id, channel])
+  @@index([store_id, engagement_score])
+  @@index([last_engagement_date])
+  @@map("subscriber_engagement")
+}

@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.1 
+    container_name: clickhouse_server
+    restart: unless-stopped
+
+    # Environment ── the default user is enabled for network logins
+    environment:
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=pass # change in production!
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+
+    # Expose HTTP (8123) and native TCP (9000) interfaces
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+
+    # Persist data on the host
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+
+    # Use the lightweight “local” driver so a bad byte can’t corrupt JSON logs.
+    # If you prefer json‑file, uncomment the block below instead.
+    logging:
+      driver: local
+      # driver: json-file
+      # options:
+      #   max-size: 10m
+      #   max-file: "3"
+
+volumes:
+  clickhouse_data:
